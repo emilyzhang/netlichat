@@ -4,7 +4,7 @@ use tokio::{
     io::AsyncWriteExt,
     net::{TcpListener, TcpStream},
     spawn,
-    sync::Mutex,
+    sync::{mpsc, Mutex},
     time::sleep,
 };
 
@@ -13,6 +13,8 @@ async fn main() {
     let listener = TcpListener::bind("127.0.0.1:7777").await.unwrap();
     loop {
         let (stream, _) = listener.accept().await.unwrap();
+        let (tx, mut rx) = mpsc::channel(100);
+        let _ = tx.send(25).await;
         let stream = Arc::new(Mutex::new(stream)); // don't have to lifetimes? arc handles it for you?
         spawn(handle_stream(stream.clone()));
         spawn(handle_stream(stream));
@@ -22,9 +24,6 @@ async fn main() {
 
 async fn handle_stream(stream: Arc<Mutex<TcpStream>>) {
     loop {
-        let _ = stream.lock().await;
-        // DEADLOCK EXAMPLE!
-        // let stream = stream.borrow_mut();
         if let Err(e) = stream.lock().await.write_all(b"hello!\n").await {
             println!("Client went away: {}", e);
         };
