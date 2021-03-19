@@ -1,9 +1,10 @@
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use tokio::{
     io::AsyncWriteExt,
     net::{TcpListener, TcpStream},
     spawn,
+    sync::Mutex,
     time::sleep,
 };
 
@@ -12,13 +13,19 @@ async fn main() {
     let listener = TcpListener::bind("127.0.0.1:7777").await.unwrap();
     loop {
         let (stream, _) = listener.accept().await.unwrap();
+        let stream = Arc::new(Mutex::new(stream)); // don't have to lifetimes? arc handles it for you?
+        spawn(handle_stream(stream.clone()));
         spawn(handle_stream(stream));
+        // when in doubt, use reference counting! Arc type
     }
 }
 
-async fn handle_stream(mut stream: TcpStream) {
+async fn handle_stream(stream: Arc<Mutex<TcpStream>>) {
     loop {
-        if let Err(e) = stream.write_all(b"hello!\n").await {
+        let _ = stream.lock().await;
+        // DEADLOCK EXAMPLE!
+        // let stream = stream.borrow_mut();
+        if let Err(e) = stream.lock().await.write_all(b"hello!\n").await {
             println!("Client went away: {}", e);
         };
         sleep(Duration::from_secs(1)).await
