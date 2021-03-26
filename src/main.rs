@@ -4,7 +4,10 @@ use tokio::{
     io::AsyncWriteExt,
     net::{TcpListener, TcpStream},
     spawn,
-    sync::{mpsc, Mutex},
+    sync::{
+        mpsc::{self, Sender},
+        Mutex,
+    },
     time::sleep,
 };
 
@@ -12,21 +15,37 @@ use tokio::{
 async fn main() {
     let listener = TcpListener::bind("127.0.0.1:7777").await.unwrap();
     loop {
-        let (stream, _) = listener.accept().await.unwrap();
+        let (mut stream, _) = listener.accept().await.unwrap();
         let (tx, mut rx) = mpsc::channel(100);
-        let _ = tx.send(25).await;
-        let stream = Arc::new(Mutex::new(stream)); // don't have to lifetimes? arc handles it for you?
-        spawn(handle_stream(stream.clone()));
-        spawn(handle_stream(stream));
+        // let stream = Arc::new(Mutex::new(stream)); // don't have to lifetimes? arc handles it for you?
+        spawn(handle_stream(tx));
+        let input = match rx.recv().await {
+            Some(input) => input,
+            None => todo!(),
+        };
+        stream.write_all(input.as_bytes()).await;
+
+        // NOTES for working with async
+        //
+        //
+
+        // NOTES for casting, in general:
+        // to_ -> construct something new
+        // into_ -> destructively transform original
+        // as_ -> take what's underneath and use that
+
+        // spawn(handle_stream(stream));
         // when in doubt, use reference counting! Arc type
     }
 }
 
-async fn handle_stream(stream: Arc<Mutex<TcpStream>>) {
+async fn handle_stream(tx: Sender<&str>) {
     loop {
-        if let Err(e) = stream.lock().await.write_all(b"hello!\n").await {
-            println!("Client went away: {}", e);
-        };
+        // if let Err(e) = stream.lock().await.write_all(b"hello!\n").await {
+        //     println!("Client went away: {}", e);
+        //     return;
+        // };
+        let _ = tx.send("hello").await;
         sleep(Duration::from_secs(1)).await
     }
 }
